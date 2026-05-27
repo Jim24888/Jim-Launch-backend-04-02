@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>广告投放平台 - 内部投放系统</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: #f0f2f5; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* 侧边栏样式 */
+        .sidebar { background-color: #2b303b; color: #fff; width: 220px; transition: width 0.3s; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar.collapsed { width: 60px; }
+        .sidebar-header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid #1f232b; }
+        .logo-text { font-size: 16px; font-weight: bold; white-space: nowrap; overflow: hidden; }
+        .sidebar.collapsed .logo-text { display: none; }
+        .toggle-btn { cursor: pointer; color: #fff; font-size: 20px; background: none; border: none; outline: none; padding: 0; }
+        .menu-list { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; }
+        .menu-item { padding: 15px; cursor: pointer; display: flex; align-items: center; border-left: 3px solid transparent; transition: all 0.2s; white-space: nowrap; overflow: hidden; }
+        .menu-item:hover { background-color: #3b4252; }
+        .menu-item.active { background-color: #1890ff; border-left-color: #fff; }
+        .menu-icon { font-size: 18px; min-width: 30px; text-align: center; }
+        .menu-text { margin-left: 10px; }
+        .sidebar.collapsed .menu-text { display: none; }
+
+        /* 主内容区样式 */
+        .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .top-nav { height: 60px; background: #fff; border-bottom: 1px solid #e8e8e8; display: flex; align-items: center; padding: 0 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); z-index: 10; }
+        .main-content { flex: 1; overflow-y: auto; padding: 20px; position: relative; }
+        
+        .route-view { display: none; animation: fadeIn 0.3s ease; }
+        .route-view.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ================= 列表页相关样式 ================= */
+        .filter-bar { background: #fff; padding: 15px 20px; border-radius: 8px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .filter-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #555; }
+        .filter-item input, .filter-item select { padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; outline: none; }
+        .action-bar { margin-bottom: 15px; display: flex; gap: 10px; }
+        .btn-primary { background: #1890ff; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.3s; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-outline { background: #fff; color: #333; border: 1px solid #d9d9d9; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-outline:hover { color: #1890ff; border-color: #1890ff; }
+        
+        .data-table-wrapper { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow-x: auto; }
+        .data-table { width: 100%; border-collapse: collapse; min-width: 1000px; font-size: 13px; }
+        .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        .data-table th { background: #fafafa; color: #333; font-weight: 600; white-space: nowrap; }
+        .data-table tr:hover { background: #fafafa; }
+        .status-tag { background: #e6f7ff; color: #1890ff; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+
+        /* ================= 弹窗 (Modal) 样式 ================= */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(2px); animation: fadeIn 0.2s ease; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: #fff; width: 900px; max-height: 90vh; border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 600; }
+        .modal-close { cursor: pointer; font-size: 24px; color: #999; line-height: 1; transition: color 0.2s; }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 15px 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 15px; background: #fafafa; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+
+        /* ================= 表单容器样式 (复用) ================= */
+        .section-title { font-size: 15px; font-weight: 600; border-left: 4px solid #1890ff; padding-left: 10px; margin: 25px 0 15px 0; background: #fafafa; line-height: 28px; color: #111; }
+        .section-title:first-child { margin-top: 0; }
+        .form-group { margin-bottom: 20px; display: flex; align-items: flex-start; }
+        .form-group label { width: 150px; text-align: right; margin-right: 20px; padding-top: 8px; font-size: 14px; font-weight: 500; }
+        .form-control { flex: 1; }
+        input[type="text"], input[type="url"], input[type="number"], select { width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; box-sizing: border-box; transition: border 0.3s; }
+        input:focus, select:focus { border-color: #1890ff; outline: none; }
+        .hidden { display: none !important; }
+        .help-text { font-size: 12px; color: #888; margin-top: 6px; line-height: 1.4; }
+        
+        .btn-group { display: flex; gap: 10px; }
+        .btn-radio { padding: 6px 16px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; cursor: pointer; background: #fff; transition: all 0.2s; }
+        .btn-radio.active { background: #1890ff; color: #fff; border-color: #1890ff; }
+        .radio-group label { margin-right: 15px; font-weight: normal; font-size: 14px; cursor: pointer; display: inline-block; padding-top: 6px; }
+
+        /* 开关 Switch 样式 */
+        .switch-label { display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #1890ff; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .switch-text { font-size: 14px; color: #333; }
+
+        /* ================= 可搜索下拉框组件 ================= */
+        .searchable-select { position: relative; width: 100%; }
+        .searchable-select input { width: 100%; padding: 8px 30px 8px 12px; cursor: text; }
+        .searchable-select::after { content: '▼'; position: absolute; right: 12px; top: 10px; font-size: 12px; color: #999; pointer-events: none; }
+        .select-dropdown { position: absolute; top: 100%; left: 0; width: 100%; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #d9d9d9; border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 100; display: none; }
+        .select-dropdown.active { display: block; }
+        .select-option { padding: 8px 12px; cursor: pointer; font-size: 14px; color: #333; transition: background 0.2s; }
+        .select-option:hover { background: #f5f5f5; color: #1890ff; }
+        .select-option.no-data { color: #999; cursor: default; background: #fff; text-align: center; }
+
+        /* ================= 悬浮说明框样式 ================= */
+        .floating-box { position: fixed; bottom: 30px; right: 30px; width: 380px; background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 3000; display: flex; flex-direction: column; transition: max-height 0.3s ease; }
+        .box-header { background: #fafafa; padding: 12px 15px; cursor: move; border-top-left-radius: 8px; border-top-right-radius: 8px; font-weight: 600; font-size: 14px; border-bottom: 1px solid #e8e8e8; user-select: none; color: #1890ff; display: flex; justify-content: space-between; align-items: center; }
+        .collapse-btn { cursor: pointer; color: #999; font-size: 14px; transition: color 0.2s; }
+        .collapse-btn:hover { color: #1890ff; }
+        .box-content-wrapper { overflow: hidden; transition: max-height 0.3s ease; max-height: 600px; }
+        .floating-box.collapsed .box-content-wrapper { max-height: 0; }
+        .box-content { padding: 15px; overflow-y: auto; max-height: 450px; font-size: 13px; line-height: 1.6; color: #555; }
+        .box-content h4 { margin: 0 0 8px 0; color: #333; font-size: 14px; border-left: 3px solid #1890ff; padding-left: 6px; }
+        .box-content p { margin: 0 0 6px 0; }
+        .box-content ul { padding-left: 20px; margin: 0 0 15px 0; }
+        .box-content li { margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+
+<!-- 侧边栏 -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <span class="logo-text">广告投放平台</span>
+        <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+    </div>
+    <ul class="menu-list">
+        <li class="menu-item active" onclick="switchRoute('list', this)">
+            <span class="menu-icon">📊</span>
+            <span class="menu-text">转化归因</span>
+        </li>
+        <li class="menu-item" onclick="switchRoute('launch', this)">
+            <span class="menu-icon">🚀</span>
+            <span class="menu-text">上计划</span>
+        </li>
+    </ul>
+</aside>
+
+<!-- 主内容区 -->
+<div class="main-wrapper">
+    <!-- 顶部导航条 -->
+    <div class="top-nav">
+        <span id="nav-title" style="font-weight: 600; font-size: 16px;">转化归因列表</span>
+    </div>
+
+    <!-- 悬浮说明框 (受路由及弹窗控制内容) -->
+    <div id="infoBox" class="floating-box">
+        <div class="box-header" id="boxHeader">
+            <span>💡 功能使用说明</span>
+            <span class="collapse-btn" id="collapseInfoBtn" onclick="toggleInfoBox()">收起 ▲</span>
+        </div>
+        <div class="box-content-wrapper">
+            <!-- 列表页说明 -->
+            <div class="box-content" id="infoContentList">
+                <h4>📌 转化归因管理机制</h4>
+                <p>此处展示系统内已有的所有转化归因资产。</p>
+                <ul>
+                    <li>由于业务需求，列表中隐藏了“媒体账号”及“深度强化目标ROI”列。</li>
+                    <li>点击上方的 <b>【+ 新建转化归因模版】</b>，可通过弹窗快速进行资产配置。</li>
+                </ul>
+                <p>配置好的模板将沉淀在库中，供“上计划”时跨账号复用或直接应用。</p>
+            </div>
+            
+            <!-- 弹窗(新建模版)说明 - 已完成替换 -->
+            <div class="box-content hidden" id="infoContentModal">
+                <h4>📌 核心机制说明（必读）</h4>
+                <ul>
+                    <li><b>隐式自归因机制：</b>为简化操作，系统在底层已将上报方式与“是否自归因”强绑定。
+                        <ul>
+                            <li>选择 <b>API</b>，系统默认强制为 <b>自归因</b>（上报匹配后的数据）。</li>
+                            <li>选择 <b>SDK</b>，系统默认强制为 <b>全量平台归因</b>（上报全量数据由平台归因）。</li>
+                        </ul>
+                    </li>
+                    <li><b>模板应用规则（上新计划时）：</b>本页面仅保存配置为“模板”。在新建广告计划并应用此模板时，选择转化归因模版后，系统会统一提取模版参数，为当前账号<b>直接新建转化归因</b>（依赖API幂等性自动防重）。</li>
+                </ul>
+
+                <h4>📝 逐字段配置说明</h4>
+                <p><b>一、 基础信息</b></p>
+                <ul>
+                    <li><b>复用转化归因：</b>功能开关。开启后可快速拉取已有配置，无需手动逐一填写。由于内部 API 与腾讯媒体端字段限制可能存在细微差异，拉取回填后请务必二次核对数据。</li>
+                    <li><b>复用账号 ID：</b>当开启复用时必填。仅支持输入单个账号 ID。输入后需点击“获取转化列表”。</li>
+                    <li><b>选择转化归因：</b>当成功获取转化列表后显示。选择特定的转化后，系统会自动将其参数映射至下方表单。</li>
+                    <li><b>转化名称：</b>必填。用于在平台内标识该转化资产。最大长度限制为 60 个中文字或 120 个英文字符。</li>
+                </ul>
+
+                <p><b>二、 转化场景与载体</b></p>
+                <ul>
+                    <li><b>转化场景：</b>必填。决定后续回传与归因链路的基础，目前支持：Android、iOS、鸿蒙 (Harmony) 及微信小游戏。</li>
+                    <li><b>应用 ID / 小游戏 ID：</b>选填。营销载体的唯一标识。选择“微信小游戏”场景时填入小游戏 ID；其余场景填入应用 App ID。</li>
+                    <li><b>安卓渠道包 ID：</b>选填。仅在场景为 Android 且使用 SDK 上报时显示并可用。格式必须严格为 <code>0;具体渠道包ID</code>，平台只会将自定义渠道包 ID 一致的数据计入该转化。</li>
+                </ul>
+
+                <p><b>三、 数据上报与归因设置</b></p>
+                <ul>
+                    <li><b>上报方式：</b>必填。支持 API 与 SDK。<br><span style="color:#888;">注意：鸿蒙 (Harmony) 场景当前仅支持 API 上报方式。</span></li>
+                    <li><b>归因方式：</b>必填。此选项受“转化场景”与“上报方式”的严格双重约束：
+                        <ul>
+                            <li>场景为【微信小游戏】时：强制仅支持 <b>注册 (REGISTER)</b>。</li>
+                            <li>上报方式为【SDK】时：强制仅支持 <b>激活 (ACTIVATION)</b>。</li>
+                            <li>APP 类场景 +【API】上报时：支持 <b>点击 (CLICK)</b>（若账户配置了白名单，也支持选择<b>激活</b>）。</li>
+                        </ul>
+                    </li>
+                    <li><b>通过数据源 ID 创建：</b>功能开关。仅在 SDK 上报（即全量平台归因）时显示。开启后，可手动指定特定的数据源。</li>
+                    <li><b>数据源 ID：</b>条件必填。当开启“通过数据源 ID 创建”时必须填写。用于账户下存在多个数据源时，精准指定归因数据源。</li>
+                    <li><b>点击监测链接：</b>条件必填。用于接收平台下发的点击及宏替换信息。当且仅当上报方式为 API（自归因），且场景为 Android 或 iOS 时，此项为必填，其他情况为选填或留空。</li>
+                </ul>
+
+                <p><b>四、 优化目标设定</b></p>
+                <ul>
+                    <li><b>浅度优化目标：</b>必填。计划的核心优化事件（如激活、注册、次日留存、付费等）。</li>
+                    <li><b>深度优化维度：</b>功能开关，支持“不使用”、“深度行为”、“深度 ROI”三选一。</li>
+                    <li><b>深度行为目标：</b>选择“深度行为”后必填。如在浅度目标（激活）基础上，深度优化（付费次数）。</li>
+                    <li><b>深度 ROI 目标：</b>选择“深度 ROI”后必填。如在浅度目标基础上，优化（首日付费 ROAS）。</li>
+                </ul>
+            </div>
+
+            <!-- 上计划说明 -->
+            <div class="box-content hidden" id="infoContentLaunch">
+                <h4>🚀 上计划 - 模版应用机制</h4>
+                <p>【转化归因模版 选择与搜索】</p>
+                <ul>
+                    <li>下方的下拉框支持<b>直接输入文字进行模糊搜索</b>，体验更顺畅。</li>
+                </ul>
+                <p>【套用逻辑（重点）】</p>
+                <ul>
+                    <li>待一次上计划时，选择了该模版。若上计划时是<b>对应账号</b>，则直接引用该转化归因资产进行投放。</li>
+                    <li>若上计划时<b>不是对应账号</b>，则系统会使用此转化归因模版的内部配置，<b>为该新账号全新创建一个转化归因资产</b>。</li>
+                    <li><b>应用位置：</b>草稿模版、上计划页（单账号与多账号）。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <!-- ======================= 路由一：转化归因列表页 ======================= -->
+        <div id="route-list" class="route-view active">
+            <!-- 筛选器栏 -->
+            <div class="filter-bar">
+                <div class="filter-item">转化名称 <input type="text" placeholder="请输入转化名称"></div>
+                <div class="filter-item">应用ID <input type="text" placeholder="请输入应用ID"></div>
+                <div class="filter-item">上报方式 <select><option value="">请选择上报方式</option><option>API上报</option><option>SDK上报</option></select></div>
+                <div class="filter-item">优化目标 <select><option value="">请选择优化目标</option></select></div>
+                <div class="filter-item">深度行为 <select><option value="">请选择深度行为</option></select></div>
+                <div class="filter-item">优化ROI <select><option value="">请选择优化ROI</option></select></div>
+                <div style="flex: 1; text-align: right;">
+                    <button class="btn-primary">查询</button>
+                    <button class="btn-outline" style="border:none; color:#1890ff;">收起 ^</button>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn-outline" onclick="openTemplateModal()">+ 新建转化归因模版</button>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>转化ID</th>
+                            <th>转化名称</th>
+                            <th>应用名称</th>
+                            <th>应用ID</th>
+                            <th>状态</th>
+                            <th>上报方式</th>
+                            <th>归因方式</th>
+                            <th>优化目标</th>
+                            <th>深度优化行为目标</th>
+                            <th>深度优化目标 (ROI)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>77291211</td>
+                            <td>sgdtjwjl_xfhx9-激活首次付费</td>
+                            <td>仙凡幻想</td>
+                            <td>2000012936</td>
+                            <td><span class="status-tag">已接入</span></td>
+                            <td>SDK上报</td>
+                            <td>激活归因</td>
+                            <td>激活</td>
+                            <td>首次付费</td>
+                            <td>未知: -</td>
+                        </tr>
+                        <tr>
+                            <td>75508136</td>
+                            <td>eqqjwfjz2_wlxqios115-监测链接ios</td>
+                            <td>永远的蔚蓝星球</td>
+                            <td>6502348074</td>
+                            <td><span class="status-tag">已接入</span></td>
+                            <td>SDK上报</td>
+                            <td>激活归因</td>
+                            <td>表单预约</td>
+                            <td>未知: -</td>
+                            <td>未知: -</td>
+                        </tr>
+                        <tr>
+                            <td>71067645</td>
+                            <td>eqqjwfjz_wlxqios75-激活ROI</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td><span class="status-tag">已接入</span></td>
+                            <td>API上报</td>
+                            <td>激活归因</td>
+                            <td>激活</td>
+                            <td>未知: -</td>
+                            <td>首日付费ROI</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ======================= 路由二：上计划页 ======================= -->
+        <div id="route-launch" class="route-view">
+            <div class="form-container" style="max-width: 1200px; margin: 0;">
+                <div class="form-group">
+                    <label>投放类型</label>
+                    <div class="form-control btn-group">
+                        <div class="btn-radio">常规投放</div>
+                        <div class="btn-radio active">智能投放</div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>推广目标</label>
+                    <div class="form-control btn-group">
+                        <div class="btn-radio">应用推广</div>
+                        <div class="btn-radio active">小游戏推广</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>媒体账号自动填充</label>
+                    <div class="form-control">
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" placeholder="请输入媒体账号，多个请用逗号隔开">
+                            <button type="button" style="padding: 0 15px; border: 1px solid #d9d9d9; background: #fff; border-radius: 4px; cursor:pointer;">🔍</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><span style="color:red">*</span> 媒体账号</label>
+                    <div class="form-control">
+                        <select>
+                            <option>腾讯 56333133(56333133)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><span style="color:red">*</span> 小游戏id</label>
+                    <div class="form-control">
+                        <select>
+                            <option>🎮 永远的蔚蓝星球(wxd704b6fcc8ba8e9e)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 核心改动：支持模糊搜索的定制下拉框 -->
+                <div class="form-group" style="background: #fdfdfd; padding: 15px 0; border: 1px dashed #1890ff; border-radius: 4px;">
+                    <label><span style="color:red">*</span> 转化归因模版</label>
+                    <div class="form-control">
+                        <div class="searchable-select" id="customSelectWrapper">
+                            <input type="text" id="launch_conversion_template" placeholder="请选择或输入文字模糊搜索模版..." autocomplete="off">
+                            <div class="select-dropdown" id="customSelectDropdown">
+                                <!-- JS渲染选项 -->
+                            </div>
+                        </div>
+                        <div class="help-text" style="color: #1890ff;">下拉框支持模糊搜索。系统将根据所选模版与当前媒体账号，判定是直接引用还是全新创建。</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><span style="color:red">*</span> 广告数量</label>
+                    <div class="form-control">
+                        <input type="number" value="1" style="width: 200px;">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>投放场景</label>
+                    <div class="form-control btn-group">
+                        <div class="btn-radio active">稳定投放</div>
+                        <div class="btn-radio">最大转化量投放</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>出价</label>
+                    <div class="form-control">
+                        <input type="number" value="0.01" step="0.01" style="width: 200px;">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>期望ROI</label>
+                    <div class="form-control">
+                        <input type="number" value="0.010" step="0.001" style="width: 200px;">
+                    </div>
+                </div>
+
+                <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 15px;">
+                    <button class="btn-primary">更新草稿箱</button>
+                    <button class="btn-primary">另存为草稿箱</button>
+                    <button class="btn-primary">下一步</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ======================= 弹窗组件：新建转化归因模板 ======================= -->
+<div class="modal-overlay" id="templateModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span>新建转化归因模板配置</span>
+            <span class="modal-close" onclick="closeTemplateModal()">×</span>
+        </div>
+        <div class="modal-body">
+            <form id="conversionForm">
+                <!-- 1. 基础信息 -->
+                <div class="section-title">1. 基础信息</div>
+                <div class="form-group">
+                    <label>复用转化归因</label>
+                    <div class="form-control">
+                        <div class="switch-label">
+                            <label class="switch">
+                                <input type="checkbox" id="reuse_conversion" onchange="handleReuseLogic()">
+                                <span class="slider"></span>
+                            </label>
+                            <span id="reuse_conversion_text" class="switch-text">否，新建空白模板</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group hidden" id="group_reuse_accounts">
+                    <label><span style="color:red">*</span>复用账号 ID</label>
+                    <div class="form-control" style="display: flex; gap: 10px;">
+                        <input type="text" id="reuse_account_id" placeholder="输入要复用的账号ID（单选）">
+                        <button type="button" onclick="mockFetchConversion()" class="btn-outline" style="white-space: nowrap;">获取转化列表</button>
+                    </div>
+                </div>
+
+                <div class="form-group hidden" id="group_reuse_conversion_select">
+                    <label><span style="color:red">*</span>选择转化归因</label>
+                    <div class="form-control">
+                        <select id="reuse_conversion_id" onchange="mockApplyConversion()">
+                            <option value="">请先获取并选择转化归因</option>
+                        </select>
+                        <div class="help-text">选中后，将自动映射该转化归因的配置信息至下方模板。</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><span style="color:red">*</span>转化名称</label>
+                    <div class="form-control"><input type="text" id="conversion_name" required maxlength="60" placeholder="最多支持 60 个中文字或 120 个英文字符"></div>
+                </div>
+
+                <!-- 2. 转化场景与载体 -->
+                <div class="section-title">2. 转化场景与载体</div>
+                <div class="form-group">
+                    <label><span style="color:red">*</span>转化场景</label>
+                    <div class="form-control">
+                        <select id="conversion_scene" required onchange="handleSceneLogic()">
+                            <option value="">请选择转化场景</option>
+                            <option value="CONVERSION_SCENE_ANDROID">Android 应用</option>
+                            <option value="CONVERSION_SCENE_IOS">iOS 应用</option>
+                            <option value="CONVERSION_SCENE_HARMONY">鸿蒙 (Harmony)</option>
+                            <option value="CONVERSION_SCENE_WECHAT_MINI_GAME">微信小游戏</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label id="label_marketing_carrier_id">应用 ID / 小游戏 ID</label>
+                    <div class="form-control">
+                        <input type="text" id="marketing_carrier_id" placeholder="选填，请输入对应的 ID">
+                    </div>
+                </div>
+                
+                <div class="form-group hidden" id="group_android_channel">
+                    <label>安卓渠道包 ID</label>
+                    <div class="form-control">
+                        <input type="text" id="app_android_channel_package_id" placeholder="格式为 '0;yy'，投放安卓且为 SDK 上报时可填">
+                    </div>
+                </div>
+
+                <!-- 3. 数据上报与归因设置 -->
+                <div class="section-title">3. 数据上报与归因设置</div>
+                <div class="form-group">
+                    <label><span style="color:red">*</span>上报方式</label>
+                    <div class="form-control">
+                        <select id="access_type" required onchange="handleAccessTypeLogic()">
+                            <option value="">请先选择转化场景</option>
+                        </select>
+                        <div class="help-text">注：API 默认为自归因，SDK 默认为全量平台归因。</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label><span style="color:red">*</span>归因方式</label>
+                    <div class="form-control">
+                        <select id="claim_type" required></select>
+                    </div>
+                </div>
+                
+                <!-- 数据源相关配置 -->
+                <div id="wrapper_action_set" class="hidden">
+                    <div class="form-group">
+                        <label>通过数据源 ID 创建</label>
+                        <div class="form-control">
+                            <div class="switch-label">
+                                <label class="switch">
+                                    <input type="checkbox" id="created_by_action_set" onchange="handleActionSetLogic()">
+                                    <span class="slider"></span>
+                                </label>
+                                <span id="created_action_text" class="switch-text">否 (False)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group hidden" id="group_action_set">
+                        <label><span style="color:red">*</span>数据源 ID</label>
+                        <div class="form-control">
+                            <input type="number" id="user_action_set_id" placeholder="选填，账户下多数据源时需手动指定">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 监测链接配置 -->
+                <div class="form-group" id="group_feedback_url">
+                    <label><span id="star_feedback_url" style="color:red; display:none;">*</span>点击监测链接</label>
+                    <div class="form-control">
+                        <input type="url" id="feedback_url" placeholder="接收点击信息，例如: http://www.qq.com?a=__CLICK_ID__">
+                        <div class="help-text">自归因且为安卓/iOS场景时必填。</div>
+                    </div>
+                </div>
+
+                <!-- 4. 优化目标设定 -->
+                <div class="section-title">4. 优化目标设定</div>
+                <div class="form-group">
+                    <label><span style="color:red">*</span>浅度优化目标</label>
+                    <div class="form-control">
+                        <select id="optimization_goal" required>
+                            <option value="">加载中...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>深度优化维度 (2选1)</label>
+                    <div class="form-control radio-group">
+                        <label><input type="radio" name="deep_type" value="NONE" checked onchange="toggleDeepGoals()"> 不使用</label>
+                        <label><input type="radio" name="deep_type" value="BEHAVIOR" onchange="toggleDeepGoals()"> 深度行为</label>
+                        <label><input type="radio" name="deep_type" value="WORTH" onchange="toggleDeepGoals()"> 深度 ROI</label>
+                    </div>
+                </div>
+
+                <div class="form-group hidden" id="box_BEHAVIOR"><label>深度行为目标</label><div class="form-control"><select id="deep_behavior_optimization_goal"></select></div></div>
+                <div class="form-group hidden" id="box_WORTH"><label>深度 ROI 目标</label><div class="form-control"><select id="deep_worth_optimization_goal"></select></div></div>
+
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-outline" onclick="closeTemplateModal()">取消</button>
+            <button class="btn-primary" onclick="submitTemplateForm()">校验并保存模版</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------------- 路由及侧边栏逻辑 ---------------- //
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('collapsed');
+    }
+
+    function switchRoute(route, el) {
+        // 更新侧边栏 active 样式
+        document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+        if(el) el.classList.add('active');
+
+        // 更新顶部标题
+        const navTitle = document.getElementById('nav-title');
+        if(route === 'list') navTitle.innerText = "转化归因管理";
+        if(route === 'launch') navTitle.innerText = "上计划配置";
+
+        // 切换主视图显示
+        document.querySelectorAll('.route-view').forEach(view => view.classList.remove('active'));
+        document.getElementById('route-' + route).classList.add('active');
+
+        // 更新说明弹窗内容
+        updateInfoBoxContext(route);
+    }
+
+    // ---------------- 弹窗 (Modal) 逻辑 ---------------- //
+    function openTemplateModal() {
+        document.getElementById('templateModal').classList.add('active');
+        updateInfoBoxContext('modal'); // 打开弹窗时，悬浮窗展示弹窗操作说明
+    }
+
+    function closeTemplateModal() {
+        document.getElementById('templateModal').classList.remove('active');
+        updateInfoBoxContext('list'); // 关闭弹窗时恢复列表页说明
+    }
+
+    // ---------------- 悬浮说明窗控制 ---------------- //
+    const box = document.getElementById('infoBox');
+    const header = document.getElementById('boxHeader');
+    let isDragging = false, startX, startY, initialLeft, initialTop;
+
+    // 拖动逻辑
+    header.addEventListener('mousedown', function(e) {
+        if(e.target.id === 'collapseInfoBtn') return; // 点击收起按钮时不拖动
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = box.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        box.style.bottom = 'auto';
+        box.style.right = 'auto';
+        box.style.left = initialLeft + 'px';
+        box.style.top = initialTop + 'px';
+        document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        box.style.left = initialLeft + (e.clientX - startX) + 'px';
+        box.style.top = initialTop + (e.clientY - startY) + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+        if (isDragging) { isDragging = false; document.body.style.userSelect = ''; }
+    });
+
+    // 展开/收起逻辑
+    function toggleInfoBox() {
+        box.classList.toggle('collapsed');
+        const btn = document.getElementById('collapseInfoBtn');
+        btn.innerText = box.classList.contains('collapsed') ? '展开 ▼' : '收起 ▲';
+    }
+
+    // 根据上下文切换说明内容
+    function updateInfoBoxContext(context) {
+        document.getElementById('infoContentList').classList.add('hidden');
+        document.getElementById('infoContentModal').classList.add('hidden');
+        document.getElementById('infoContentLaunch').classList.add('hidden');
+        
+        if (context === 'list') document.getElementById('infoContentList').classList.remove('hidden');
+        if (context === 'modal') document.getElementById('infoContentModal').classList.remove('hidden');
+        if (context === 'launch') document.getElementById('infoContentLaunch').classList.remove('hidden');
+    }
+
+    // ---------------- 模糊搜索下拉框组件 (上计划页) ---------------- //
+    const templateOptions = [
+        "mpjwlk_jzcqfyd5-小游戏30日ROI模版",
+        "通用激活模版-Android端",
+        "全局付费模版-企微专属",
+        "测试用次留模版01",
+        "仙凡幻想-SDK激活专用"
+    ];
+
+    const searchInput = document.getElementById('launch_conversion_template');
+    const dropdownMenu = document.getElementById('customSelectDropdown');
+
+    function renderDropdown(filterText = '') {
+        dropdownMenu.innerHTML = '';
+        const filtered = templateOptions.filter(opt => opt.toLowerCase().includes(filterText.toLowerCase()));
+        
+        if (filtered.length === 0) {
+            dropdownMenu.innerHTML = '<div class="select-option no-data">无匹配的模版</div>';
+        } else {
+            filtered.forEach(opt => {
+                const div = document.createElement('div');
+                div.className = 'select-option';
+                div.innerText = opt;
+                div.onclick = function() {
+                    searchInput.value = opt;
+                    dropdownMenu.classList.remove('active');
+                };
+                dropdownMenu.appendChild(div);
+            });
+        }
+    }
+
+    searchInput.addEventListener('focus', () => {
+        renderDropdown(searchInput.value);
+        dropdownMenu.classList.add('active');
+    });
+
+    searchInput.addEventListener('input', (e) => {
+        renderDropdown(e.target.value);
+    });
+
+    // 点击外部关闭下拉框
+    document.addEventListener('click', function(e) {
+        if (!document.getElementById('customSelectWrapper').contains(e.target)) {
+            dropdownMenu.classList.remove('active');
+        }
+    });
+
+    // ---------------- 弹窗内部表单业务联动逻辑 ---------------- //
+    const BEHAVIOR_GOALS = [
+        { value: "OPTIMIZATIONGOAL_APP_ACTIVATE", label: "激活" },
+        { value: "OPTIMIZATIONGOAL_APP_REGISTER", label: "注册" },
+        { value: "OPTIMIZATIONGOAL_APP_PURCHASE", label: "付费次数" },
+        { value: "OPTIMIZATIONGOAL_ONE_DAY_RETENTION", label: "次日留存" },
+        { value: "OPTIMIZATIONGOAL_MOBILE_APP_CREATE_ROLE", label: "小游戏创角" }
+    ];
+
+    const WORTH_GOALS = [
+        { value: "GOAL_1DAY_PURCHASE_ROAS", label: "首日付费 ROAS" },
+        { value: "GOAL_7DAY_PURCHASE_ROAS", label: "7日付费 ROAS" }
+    ];
+
+    function initOptions() {
+        const renderOpts = (arr, elId, includeEmpty = true) => {
+            const el = document.getElementById(elId);
+            el.innerHTML = includeEmpty ? '<option value="">请选择目标</option>' : '';
+            arr.forEach(item => { el.innerHTML += `<option value="${item.value}">${item.label} (${item.value})</option>`; });
+        };
+        renderOpts(BEHAVIOR_GOALS, 'optimization_goal', false);
+        renderOpts(BEHAVIOR_GOALS, 'deep_behavior_optimization_goal');
+        renderOpts(WORTH_GOALS, 'deep_worth_optimization_goal');
+    }
+    
+    // 初始化调用
+    initOptions();
+
+    function handleSceneLogic() {
+        const scene = document.getElementById('conversion_scene').value;
+        const accessType = document.getElementById('access_type');
+        const carrierLabel = document.getElementById('label_marketing_carrier_id');
+        
+        if(scene === 'CONVERSION_SCENE_WECHAT_MINI_GAME') { carrierLabel.innerHTML = '小游戏 ID'; } 
+        else { carrierLabel.innerHTML = '应用 ID'; }
+
+        accessType.innerHTML = '<option value="">请选择</option>';
+        if(['CONVERSION_SCENE_ANDROID', 'CONVERSION_SCENE_IOS', 'CONVERSION_SCENE_WECHAT_MINI_GAME'].includes(scene)) {
+            accessType.innerHTML += '<option value="ACCESS_TYPE_SDK">SDK</option><option value="ACCESS_TYPE_API">API</option>';
+        } else if(scene === 'CONVERSION_SCENE_HARMONY') {
+            accessType.innerHTML += '<option value="ACCESS_TYPE_API">API</option>';
+        }
+
+        document.getElementById('group_android_channel').classList.add('hidden');
+        document.getElementById('app_android_channel_package_id').value = "";
+        handleAccessTypeLogic();
+    }
+
+    function handleAccessTypeLogic() {
+        const scene = document.getElementById('conversion_scene').value;
+        const access = document.getElementById('access_type').value;
+        const isSelfAttributed = (access === 'ACCESS_TYPE_API');
+        
+        const claim = document.getElementById('claim_type');
+        claim.innerHTML = '';
+        if(scene === 'CONVERSION_SCENE_WECHAT_MINI_GAME') {
+            claim.innerHTML = '<option value="CLAIM_TYPE_REGISTER">注册 (REGISTER)</option>';
+        } else if(access === 'ACCESS_TYPE_SDK') {
+            claim.innerHTML = '<option value="CLAIM_TYPE_ACTIVATION">激活 (ACTIVATION)</option>';
+            if(scene === 'CONVERSION_SCENE_ANDROID') document.getElementById('group_android_channel').classList.remove('hidden');
+        } else {
+            claim.innerHTML = '<option value="CLAIM_TYPE_CLICK">点击 (CLICK)</option><option value="CLAIM_TYPE_IMPRESSION">曝光 (IMPRESSION - 需白名单)</option>';
+        }
+
+        const isMandatoryFeedback = isSelfAttributed && ['CONVERSION_SCENE_ANDROID', 'CONVERSION_SCENE_IOS'].includes(scene);
+        const starFeedback = document.getElementById('star_feedback_url');
+        const inputFeedback = document.getElementById('feedback_url');
+
+        if (isMandatoryFeedback) {
+            starFeedback.style.display = 'inline';
+            inputFeedback.required = true;
+        } else {
+            starFeedback.style.display = 'none';
+            inputFeedback.required = false;
+        }
+
+        const wrapperActionSet = document.getElementById('wrapper_action_set');
+        if (isSelfAttributed) {
+            wrapperActionSet.classList.add('hidden');
+            document.getElementById('created_by_action_set').checked = false;
+        } else if (access !== '') {
+            wrapperActionSet.classList.remove('hidden');
+        } else {
+            wrapperActionSet.classList.add('hidden');
+        }
+        handleActionSetLogic(); 
+    }
+
+    function handleActionSetLogic() {
+        const created = document.getElementById('created_by_action_set').checked;
+        const textSpan = document.getElementById('created_action_text');
+        const groupAction = document.getElementById('group_action_set');
+        const inputActionSet = document.getElementById('user_action_set_id');
+        
+        if (created) {
+            textSpan.innerText = "是 (True)"; textSpan.style.color = "#1890ff";
+            groupAction.classList.remove('hidden'); inputActionSet.required = true;
+        } else {
+            textSpan.innerText = "否 (False)"; textSpan.style.color = "#333";
+            groupAction.classList.add('hidden'); inputActionSet.required = false; inputActionSet.value = "";
+        }
+    }
+
+    function handleReuseLogic() {
+        const isReuse = document.getElementById('reuse_conversion').checked;
+        const textSpan = document.getElementById('reuse_conversion_text');
+        const groupReuseAccounts = document.getElementById('group_reuse_accounts');
+        const inputReuseId = document.getElementById('reuse_account_id');
+        const groupReuseSelect = document.getElementById('group_reuse_conversion_select');
+
+        if (isReuse) {
+            textSpan.innerText = "是，拉取配置复用"; textSpan.style.color = "#1890ff";
+            groupReuseAccounts.classList.remove('hidden'); inputReuseId.required = true;
+        } else {
+            textSpan.innerText = "否，新建空白模板"; textSpan.style.color = "#333";
+            groupReuseAccounts.classList.add('hidden'); inputReuseId.required = false; inputReuseId.value = "";
+            groupReuseSelect.classList.add('hidden'); document.getElementById('reuse_conversion_id').required = false;
+        }
+    }
+
+    function mockFetchConversion() {
+        const id = document.getElementById('reuse_account_id').value;
+        if (!id) { alert('请先输入复用账号ID！'); return; }
+        
+        const selectEl = document.getElementById('reuse_conversion_id');
+        selectEl.innerHTML = `<option value="">请选择</option><option value="conv_888">示例转化A</option>`;
+        document.getElementById('group_reuse_conversion_select').classList.remove('hidden');
+        selectEl.required = true;
+    }
+
+    function mockApplyConversion() {
+        // 省略详尽mock，保持逻辑流转...
+    }
+
+    function toggleDeepGoals() {
+        const type = document.querySelector('input[name="deep_type"]:checked').value;
+        ['BEHAVIOR', 'WORTH'].forEach(key => {
+            const el = document.getElementById('box_' + key);
+            if(key === type) { el.classList.remove('hidden'); } 
+            else { el.classList.add('hidden'); el.querySelector('select').value = ""; }
+        });
+    }
+
+    function submitTemplateForm() {
+        // 触发原生校验
+        if(!document.getElementById('conversionForm').reportValidity()) return;
+        alert('模版配置已生成！(详见控制台输出)');
+        closeTemplateModal();
+    }
+</script>
+
+</body>
+</html>
